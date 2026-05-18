@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os/exec"
+	"sync/atomic"
 
 	"github.com/songgao/water"
 )
@@ -77,43 +78,56 @@ func main() {
 	udpToTUN(conn, iface)
 }
 
-// tunToUDP reads raw IP packets from the TUN interface
-// and forwards each one as a single UDP datagram to the peer.
 func tunToUDP(iface *water.Interface, conn *net.UDPConn, peer *net.UDPAddr) {
-	buf := make([]byte, 1500) // standard Ethernet MTU
+	aead := newCipher()
+	buf := make([]byte, 1500)
+
+	var counter uint64 // starts at 0, increments per packet
+
 	for {
 		n, err := iface.Read(buf)
 		if err != nil {
 			log.Fatal("[tun→udp] read TUN:", err)
 		}
 
-		_, err = conn.WriteToUDP(buf[:n], peer)
+		// Encrypt before sending
+		encrypted := Encrypt(aead, counter, buf[:n])
+		atomic.AddUint64(&counter, 1)
+
+		_, err = conn.WriteToUDP(encrypted, peer)
 		if err != nil {
 			log.Printf("[tun→udp] send UDP: %v", err)
 			continue
 		}
 
-		fmt.Printf("[tun→udp] %d bytes\n", n)
+		fmt.Printf("[tun→udp] %d bytes → %d bytes encrypted\n", n, len(encrypted))
 	}
 }
 
-// udpToTUN receives UDP datagrams from the peer
-// and injects each one as a raw IP packet into the TUN interface.
 func udpToTUN(conn *net.UDPConn, iface *water.Interface) {
-	buf := make([]byte, 1500)
+	aead := newCipher()
+	buf := make([]byte, 1500+12+16) // extra room for nonce + auth tag
+
 	for {
 		n, remoteAddr, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			log.Fatal("[udp→tun] read UDP:", err)
 		}
 
-		_, err = iface.Write(buf[:n])
+		// Decrypt before injecting into TUN
+		plaintext, err := Decrypt(aead, buf[:n])
+		if err != nil {
+			log.Printf("[udp→tun] dropping packet from %s: %v", remoteAddr, err)
+			continue // drop the packet, don't crash
+		}
+
+		_, err = iface.Write(plaintext)
 		if err != nil {
 			log.Printf("[udp→tun] write TUN: %v", err)
 			continue
 		}
 
-		fmt.Printf("[udp→tun] %d bytes from %s\n", n, remoteAddr)
+		fmt.Printf("[udp→tun] %d bytes encrypted → %d bytes plaintext\n", n, len(plaintext))
 	}
 }
 
