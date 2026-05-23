@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"flag"
-	"fmt"
+	// "fmt"
 	"log"
 	"net"
 	"sync"
@@ -144,20 +144,20 @@ func handleConn(conn net.Conn, registry *Registry) {
 	log.Printf("[server] connection closed: %s", remoteAddr)
 }
  
-func send(enc *json.Encoder, msg Message) {
-	if err := enc.Encode(msg); err != nil {
-		log.Printf("[server] send error: %v", err)
-	}
-}
+// func send(enc *json.Encoder, msg Message) {
+// 	if err := enc.Encode(msg); err != nil {
+// 		log.Printf("[server] send error: %v", err)
+// 	}
+// }
  
-func must(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
-}
+// func must(err error) {
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+// }
  
-func check(err error) {
-	if err != nil {
-		fmt.Println("error:", err)
-	}
-}
+// func check(err error) {
+// 	if err != nil {
+// 		fmt.Println("error:", err)
+// 	}
+// }
